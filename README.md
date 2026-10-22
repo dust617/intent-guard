@@ -42,12 +42,25 @@ Agent 有三种典型失败，都不属于「能力不够」，而属于「方�
 
 ## 安装
 
+安装器只做两件事：放技能本体、把 6 行常驻块追加到**你指定的**全局指令文件。
+
+⚠️ **默认目标是 `~/.dsh/AGENTS.md`，那是 DSH 的位置。别的宿主读的不是这个文件**——装完只看到 "ok" 不代表生效。
+
+| 宿主 | 全局常驻文件 | 项目级 | 怎么确认真的读到了 |
+|---|---|---|---|
+| DSH (DeepSeek Harness) | `~/.dsh/AGENTS.md` | `<repo>/AGENTS.md` | 新开会话，看系统提示里有没有「需求守门」 |
+| Codex CLI | `$CODEX_HOME/AGENTS.md`（默认 `~/.codex/AGENTS.md`；若存在 `AGENTS.override.md` 则优先读它） | `<repo>/AGENTS.md`，从 git 根向 cwd 串联，上限 32 KiB | `codex --ask-for-approval never "Summarize the current instructions."`，它应当引用该文件内容 |
+| Claude Code | `~/.claude/CLAUDE.md` | `<repo>/CLAUDE.md` | `/memory` |
+
 ### 一键（Windows）
 
 ```powershell
 git clone https://github.com/dust617/intent-guard.git
 cd intent-guard
 powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+# 别的宿主：显式指定目标文件
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -AgentsFile "$HOME\.codex\AGENTS.md"
 ```
 
 ### 一键（macOS / Linux）
@@ -56,14 +69,21 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 git clone https://github.com/dust617/intent-guard.git
 cd intent-guard
 bash install.sh
+
+AGENTS_FILE=~/.claude/CLAUDE.md bash install.sh    # 别的宿主
 ```
 
 ### 手动
 
-1. 把 `SKILL.md` 复制到 `~/.agents/skills/intent-guard/SKILL.md`
-2. 把 `AGENTS-snippet.md` 的内容追加到你的全局 `AGENTS.md`（Claude Code 用 `~/.claude/CLAUDE.md`，Codex 用 `~/.codex/AGENTS.md`）
+1. `SKILL.md` → `~/.agents/skills/intent-guard/SKILL.md`
+2. `AGENTS-snippet.md` → 追加到上表里你那个宿主的文件
 
-安装器是**幂等**的：已存在则跳过，改 `AGENTS.md` 前会备份。
+安装器是**幂等**的：目标文件里已出现 `intent-guard` 就跳过；改文件前自动备份并打印回滚命令。
+
+**两个坑**：
+
+- 项目里若已有 `AGENTS.md` / `CLAUDE.md`，**项目级规则会覆盖全局**（Codex 是从 git 根向下串联，越靠近 cwd 越靠后、越优先）。常驻块可能被项目规则压掉。
+- 装之前先看一眼目标文件里有没有重复或冲突的同类指令，别叠成两层。
 
 ### 卸载
 
@@ -90,8 +110,8 @@ rm -rf ~/.agents/skills/intent-guard
 
 | 项 | 量 | 何时付 |
 |---|---|---|
-| 常驻块 | 269 字 ≈ 185 token | 每次调用；50 步会话 ≈ 9k input，缓存命中后约 1/10 |
-| 技能正文 | 3532 字 ≈ 2.4k token | 每个任务一次 |
+| 常驻块 | 275 字 ≈ 190 token | 每次调用；50 步会话 ≈ 9.5k input，缓存命中后约 1/10 |
+| 技能正文 | 3764 字 ≈ 2.5k token | 每个任务一次 |
 | 输出 | L0 零行 / L1 一行 / L2 默认零行 / L3 ≤8 行 | 每次 |
 
 对照物：一次 `grep` 返回 500–3000 token。**常驻成本低于一次 grep。**
