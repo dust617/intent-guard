@@ -30,8 +30,16 @@ if [ ! -f "$AGENTS_FILE" ]; then
   exit 0
 fi
 
+if grep -q '<!-- intent-guard:start -->' "$AGENTS_FILE" && grep -q '<!-- intent-guard:end -->' "$AGENTS_FILE"; then
+  echo "[skip] '$AGENTS_FILE' already contains the intent-guard marker block; left untouched."
+  exit 0
+fi
+
 if grep -q 'intent-guard' "$AGENTS_FILE"; then
-  echo "[skip] '$AGENTS_FILE' already mentions intent-guard; left untouched."
+  echo "[warn] '$AGENTS_FILE' mentions 'intent-guard' but has NO complete marker block."
+  echo "       Possibly a manual note (e.g. 'do not use intent-guard') or a partial install."
+  echo "       Please inspect the file manually; aborting instead of appending a duplicate."
+  echo "       Expected markers: <!-- intent-guard:start --> ... <!-- intent-guard:end -->"
   exit 0
 fi
 

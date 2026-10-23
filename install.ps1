@@ -45,8 +45,17 @@ if (-not (Test-Path $AgentsFile)) {
 }
 
 $existing = [System.IO.File]::ReadAllText($AgentsFile, [System.Text.Encoding]::UTF8)
-if ($existing -match 'intent-guard') {
-    Write-Host "[skip] '$AgentsFile' already mentions intent-guard; left untouched."
+$hasStart = $existing -match '<!-- intent-guard:start -->'
+$hasEnd   = $existing -match '<!-- intent-guard:end -->'
+if ($hasStart -and $hasEnd) {
+    Write-Host "[skip] '$AgentsFile' already contains the intent-guard marker block; left untouched."
+    return
+}
+if (($existing -match 'intent-guard') -and (-not ($hasStart -and $hasEnd))) {
+    Write-Host "[warn] '$AgentsFile' mentions 'intent-guard' but has NO complete marker block."
+    Write-Host "       Possibly a manual note (e.g. 'do not use intent-guard') or a partial install."
+    Write-Host "       Please inspect the file manually; aborting instead of appending a duplicate."
+    Write-Host "       Expected markers: <!-- intent-guard:start --> ... <!-- intent-guard:end -->"
     return
 }
 
