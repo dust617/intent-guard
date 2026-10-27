@@ -33,14 +33,17 @@ Copy-Item $skillSrc (Join-Path $skillDestDir 'SKILL.md') -Force
 Write-Host "[ok] skill  -> $(Join-Path $skillDestDir 'SKILL.md')"
 
 # --- 2. resident block -----------------------------------------------------
-$snippet = [System.IO.File]::ReadAllText($snippetSrc, [System.Text.Encoding]::UTF8).TrimEnd() + "`r`n"
+# Repo snippet is LF; normalise to the target file's EOL so we never mix endings.
+$snippetRaw = [System.IO.File]::ReadAllText($snippetSrc, [System.Text.Encoding]::UTF8)
+$snippetLf  = ($snippetRaw -replace "`r`n", "`n").TrimEnd()
+function WithEol([string]$text, [string]$eol) { ($text -replace "`n", $eol) + $eol }
 
 if (-not (Test-Path $AgentsFile)) {
     $parent = Split-Path -Parent $AgentsFile
     if ($parent -and -not (Test-Path $parent)) {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
-    [System.IO.File]::WriteAllText($AgentsFile, $snippet, $utf8)
+    [System.IO.File]::WriteAllText($AgentsFile, (WithEol $snippetLf "`n"), $utf8)
     Write-Host "[ok] created $AgentsFile"
     return
 }
@@ -58,8 +61,21 @@ if (($existing -match 'intent-guard') -and (-not ($hasStart -and $hasEnd))) {
 
 # Existing marker block: replace in place so upgrades reach already-installed hosts.
 if ($hasStart -and $hasEnd) {
+    # Parity with install.sh: exactly one start, one end, and end after start.
+    $startCount = ([regex]::Matches($existing, [regex]::Escape('<!-- intent-guard:start -->'))).Count
+    $endCount   = ([regex]::Matches($existing, [regex]::Escape('<!-- intent-guard:end -->'))).Count
+    $startIdx   = $existing.IndexOf('<!-- intent-guard:start -->')
+    $endIdx     = $existing.IndexOf('<!-- intent-guard:end -->')
+    if (($startCount -ne 1) -or ($endCount -ne 1) -or ($endIdx -lt $startIdx)) {
+        Write-Host "[error] marker block is reversed or duplicated in '$AgentsFile'; left untouched."
+        Write-Host "        Expect exactly one <!-- intent-guard:start --> followed by one <!-- intent-guard:end -->."
+        Write-Host "        Fix the file manually, then re-run the installer."
+        return
+    }
+    $eol = if ($existing -match "`r`n") { "`r`n" } else { "`n" }
+    $body = WithEol $snippetLf $eol
     $pattern = '(?s)<!-- intent-guard:start -->.*?<!-- intent-guard:end -->'
-    $replaced = [regex]::Replace($existing, $pattern, $snippet.TrimEnd(), 1)
+    $replaced = [regex]::Replace($existing, $pattern, $body.TrimEnd(), 1)
     if ($replaced -eq $existing) {
         Write-Host "[skip] marker block already matches; left untouched."
         return
@@ -74,7 +90,8 @@ if ($hasStart -and $hasEnd) {
 
 $backup = "$AgentsFile.bak-intent-guard-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 Copy-Item $AgentsFile $backup -Force
-$new = $existing.TrimEnd() + "`r`n`r`n" + $snippet
+$eol = if ($existing -match "`r`n") { "`r`n" } else { "`n" }
+$new = $existing.TrimEnd() + $eol + $eol + (WithEol $snippetLf $eol)
 [System.IO.File]::WriteAllText($AgentsFile, $new, $utf8)
 
 Write-Host "[ok] appended resident block -> $AgentsFile"
