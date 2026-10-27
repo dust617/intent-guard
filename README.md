@@ -79,6 +79,14 @@ AGENTS_FILE=~/.claude/CLAUDE.md bash install.sh    # 别的宿主
 1. `SKILL.md` → `~/.agents/skills/intent-guard/SKILL.md`
 2. `AGENTS-snippet.md` → 追加到上表里你那个宿主的文件
 
+### 改安装器之后跑一遍
+
+```bash
+bash tests/install.test.sh    # 28 条，无依赖，全程在临时目录里跑
+```
+
+覆盖：全新安装 / 重复跳过 / 就地替换 / 保留前后文 / 零散字样告警退出 / **颠倒标记与重复标记必须拒绝且零改动** / 换行不混用。最后那组是重点——安装器早先有过「标记顺序颠倒就静默删掉后面全部内容」的 bug，不测看不出来。
+
 安装器是**幂等**的：目标文件里已出现 `intent-guard` 就跳过；改文件前自动备份并打印回滚命令。
 
 **两个坑**：
