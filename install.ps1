@@ -3,7 +3,8 @@
   intent-guard installer (Windows / PowerShell 5.1+)
 
   - copies SKILL.md  -> <SkillsDir>\intent-guard\SKILL.md
-  - appends AGENTS-snippet.md -> <AgentsFile>  (idempotent; skips if already present)
+  - writes AGENTS-snippet.md into <AgentsFile>
+    (idempotent: replaces an existing marker block; skips only when unchanged)
   - backs up <AgentsFile> before modifying
 
   Override targets:
@@ -47,15 +48,27 @@ if (-not (Test-Path $AgentsFile)) {
 $existing = [System.IO.File]::ReadAllText($AgentsFile, [System.Text.Encoding]::UTF8)
 $hasStart = $existing -match '<!-- intent-guard:start -->'
 $hasEnd   = $existing -match '<!-- intent-guard:end -->'
-if ($hasStart -and $hasEnd) {
-    Write-Host "[skip] '$AgentsFile' already contains the intent-guard marker block; left untouched."
-    return
-}
 if (($existing -match 'intent-guard') -and (-not ($hasStart -and $hasEnd))) {
     Write-Host "[warn] '$AgentsFile' mentions 'intent-guard' but has NO complete marker block."
     Write-Host "       Possibly a manual note (e.g. 'do not use intent-guard') or a partial install."
     Write-Host "       Please inspect the file manually; aborting instead of appending a duplicate."
     Write-Host "       Expected markers: <!-- intent-guard:start --> ... <!-- intent-guard:end -->"
+    return
+}
+
+# Existing marker block: replace in place so upgrades reach already-installed hosts.
+if ($hasStart -and $hasEnd) {
+    $pattern = '(?s)<!-- intent-guard:start -->.*?<!-- intent-guard:end -->'
+    $replaced = [regex]::Replace($existing, $pattern, $snippet.TrimEnd(), 1)
+    if ($replaced -eq $existing) {
+        Write-Host "[skip] marker block already matches; left untouched."
+        return
+    }
+    $backup = "$AgentsFile.bak-intent-guard-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Copy-Item $AgentsFile $backup -Force
+    [System.IO.File]::WriteAllText($AgentsFile, $replaced, $utf8)
+    Write-Host "[ok] replaced resident block -> $AgentsFile"
+    Write-Host "[bk] backup: $backup"
     return
 }
 

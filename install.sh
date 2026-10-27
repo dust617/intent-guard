@@ -2,7 +2,8 @@
 # intent-guard installer (macOS / Linux)
 #
 #   - copies SKILL.md        -> $SKILLS_DIR/intent-guard/SKILL.md
-#   - appends AGENTS-snippet.md -> $AGENTS_FILE   (idempotent)
+#   - writes AGENTS-snippet.md into $AGENTS_FILE
+#     (idempotent: replaces an existing marker block; skips only when unchanged)
 #   - backs up $AGENTS_FILE before modifying
 #
 # Override targets:
@@ -31,7 +32,28 @@ if [ ! -f "$AGENTS_FILE" ]; then
 fi
 
 if grep -q '<!-- intent-guard:start -->' "$AGENTS_FILE" && grep -q '<!-- intent-guard:end -->' "$AGENTS_FILE"; then
-  echo "[skip] '$AGENTS_FILE' already contains the intent-guard marker block; left untouched."
+  UPDATED="$(python3 - "$AGENTS_FILE" "$ROOT/AGENTS-snippet.md" <<'PY'
+import pathlib, sys
+path, snippet = sys.argv[1], pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").strip()
+text = pathlib.Path(path).read_text(encoding="utf-8")
+start, end = "<!-- intent-guard:start -->", "<!-- intent-guard:end -->"
+a, b = text.find(start), text.find(end)
+if a < 0 or b < a:
+    sys.exit(2)
+b = b + len(end)
+new = text[:a] + snippet + text[b:]
+sys.stdout.write(new)
+PY
+)"
+  if [ "$UPDATED" = "$(cat "$AGENTS_FILE")" ]; then
+    echo "[skip] marker block already matches; left untouched."
+    exit 0
+  fi
+  BACKUP="$AGENTS_FILE.bak-intent-guard-$(date +%Y%m%d-%H%M%S)"
+  cp "$AGENTS_FILE" "$BACKUP"
+  printf '%s' "$UPDATED" > "$AGENTS_FILE"
+  echo "[ok] replaced resident block -> $AGENTS_FILE"
+  echo "[bk] backup: $BACKUP"
   exit 0
 fi
 
