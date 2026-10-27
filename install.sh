@@ -32,26 +32,31 @@ if [ ! -f "$AGENTS_FILE" ]; then
 fi
 
 if grep -q '<!-- intent-guard:start -->' "$AGENTS_FILE" && grep -q '<!-- intent-guard:end -->' "$AGENTS_FILE"; then
-  UPDATED="$(python3 - "$AGENTS_FILE" "$ROOT/AGENTS-snippet.md" <<'PY'
-import pathlib, sys
-path, snippet = sys.argv[1], pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").strip()
-text = pathlib.Path(path).read_text(encoding="utf-8")
-start, end = "<!-- intent-guard:start -->", "<!-- intent-guard:end -->"
-a, b = text.find(start), text.find(end)
-if a < 0 or b < a:
-    sys.exit(2)
-b = b + len(end)
-new = text[:a] + snippet + text[b:]
-sys.stdout.write(new)
-PY
-)"
-  if [ "$UPDATED" = "$(cat "$AGENTS_FILE")" ]; then
+  TMP="$(mktemp "${TMPDIR:-/tmp}/intent-guard.XXXXXX")"
+  trap 'rm -f "$TMP"' EXIT
+  awk -v snippet="$ROOT/AGENTS-snippet.md" '
+    BEGIN {
+      while ((getline line < snippet) > 0) snip = snip line "\n"
+      close(snippet)
+    }
+    /<!-- intent-guard:start -->/ { printf "%s", snip; inblock = 1; next }
+    /<!-- intent-guard:end -->/   { inblock = 0; next }
+    !inblock                      { print }
+  ' "$AGENTS_FILE" > "$TMP"
+
+  if [ ! -s "$TMP" ]; then
+    echo "[error] replacement produced an empty file; '$AGENTS_FILE' left untouched." >&2
+    exit 1
+  fi
+
+  if cmp -s "$TMP" "$AGENTS_FILE"; then
     echo "[skip] marker block already matches; left untouched."
     exit 0
   fi
+
   BACKUP="$AGENTS_FILE.bak-intent-guard-$(date +%Y%m%d-%H%M%S)"
   cp "$AGENTS_FILE" "$BACKUP"
-  printf '%s' "$UPDATED" > "$AGENTS_FILE"
+  cat "$TMP" > "$AGENTS_FILE"
   echo "[ok] replaced resident block -> $AGENTS_FILE"
   echo "[bk] backup: $BACKUP"
   exit 0
